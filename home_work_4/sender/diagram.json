@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "author": "Rus Nik",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn1", "top": -80, "left": 25, "rotate": 45, "attrs": { "color": "green" } },
+    { "type": "wokwi-dht22", "id": "dht1", "top": 40, "left": 170, "attrs": {}, "rotate": 45 }
+  ],
+  "connections": [
+    ["esp:TX0", "$serialMonitor:RX", "", []],
+    ["esp:RX0", "$serialMonitor:TX", "", []],
+    ["btn1:1.r", "esp:D5", "blue", []],
+    ["btn1:2.l", "esp:GND.2", "black", []],
+    ["dht1:VCC", "esp:3V3", "red", []],
+    ["dht1:GND", "esp:GND.1", "black", []],
+    ["dht1:SDA", "esp:D4", "green", []]
+  ],
+  "dependencies": {}
+}
