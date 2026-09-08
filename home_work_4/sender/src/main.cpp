@@ -13,15 +13,20 @@
 
 #define MQTT_BROKER    "broker.hivemq.com"
 #define MQTT_PORT      1883
-#define MQTT_CLIENT_ID "esp32-sender-id"
-#define TOPIC_SENSORS  "iot-course/rus-nik/sensors"
-#define TOPIC_COMMANDS  "iot-course/rus-nik/commands"
+#define MQTT_CLIENT_ID "esp32-sender-rus-nik"
+
+#define TOPIC_TEMPERATURE "iot-course/rus-nik/sensors/temperature"
+#define TOPIC_HUMIDITY    "iot-course/rus-nik/sensors/humidity"
+#define TOPIC_COMMANDS    "iot-course/rus-nik/commands"
+#define TOPIC_STATUS      "iot-course/rus-nik/status"
 
 #define RECONNECT_INTERVAL  5000
+#define RECONNECT_MAX       3
 #define PUBLISH_INTERVAL    10000
 
 unsigned long lastPublish = 0;
 unsigned long lastReconnectAttempt = 0;
+uint8_t reconnectCount = 0;
 
 static volatile bool buttonPressed = false;
 
@@ -88,10 +93,12 @@ bool connectWifi() {
 bool connectMQTT() {
     Serial.print("[MQTT] Connecting to ");
     Serial.print(MQTT_BROKER);
-    Serial.print(" ...");
+    Serial.print("...");
 
     if (mqttClient.connect(MQTT_CLIENT_ID)) {
         Serial.println(" OK");
+        mqttClient.publish(TOPIC_STATUS, "sender online");
+        reconnectCount = 0;
         return true;
     }
 
@@ -100,25 +107,19 @@ bool connectMQTT() {
     return false;
 }
 
-const char* buildSensorPayload(float temperature, float humidity) {
-    static char buf[80];
-    snprintf(buf, sizeof(buf), "{\"temperature\":%.1f,\"humidity\":%.1f}", temperature, humidity);
-    return buf;
-}
-
 void publishData(const char* topic, const char* payload) {
     if (!mqttClient.connected()) {
-        Serial.println("[MQTT] Not Connected —> Skip");
+        Serial.println("[MQTT] Not connected -> skip");
         return;
     }
 
-    Serial.print("[MQTT] Publishing to ");
+    Serial.print("[MQTT] ");
     Serial.print(topic);
     Serial.print(": ");
     Serial.println(payload);
 
-    bool isOk = mqttClient.publish(topic, payload);
-    Serial.println(isOk ? "[MQTT] OK" : "[MQTT] Error in data publishing");
+    bool ok = mqttClient.publish(topic, payload);
+    Serial.println(ok ? "[MQTT] OK" : "[MQTT] Error");
 }
 
 void setup() {
@@ -141,26 +142,42 @@ void loop() {
         mqttClient.loop();
 
         if (isButtonPressedWithDebounce()) {
-          publishData(TOPIC_COMMANDS, "manual_read");
+            publishData(TOPIC_COMMANDS, "manual_read");
         }
 
         unsigned long now = millis();
-        if ((now - lastPublish) > PUBLISH_INTERVAL) {
+        if (now - lastPublish > PUBLISH_INTERVAL) {
             lastPublish = now;
 
-            const char* payload = buildSensorPayload(dht.readTemperature(), dht.readHumidity());
-            publishData(TOPIC_SENSORS, payload);
+            float t = dht.readTemperature();
+            float h = dht.readHumidity();
+
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.1f", t);
+            publishData(TOPIC_TEMPERATURE, buf);
+
+            snprintf(buf, sizeof(buf), "%.1f", h);
+            publishData(TOPIC_HUMIDITY, buf);
         }
     } else {
         if (isButtonPressedWithDebounce()) {
-          Serial.println("[Button] pressed.");
+            Serial.println("[Button] pressed (offline)");
         }
 
         unsigned long now = millis();
         if (now - lastReconnectAttempt > RECONNECT_INTERVAL) {
             lastReconnectAttempt = now;
-            Serial.println("[MQTT] Connection lost —> reconnect...");
-            connectMQTT();
+
+            if (reconnectCount < RECONNECT_MAX) {
+                reconnectCount++;
+                Serial.print("[MQTT] Reconnect attempt ");
+                Serial.print(reconnectCount);
+                Serial.print("/");
+                Serial.println(RECONNECT_MAX);
+                connectMQTT();
+            } else {
+                Serial.println("[MQTT] Max reconnect attempts reached");
+            }
         }
     }
 }
